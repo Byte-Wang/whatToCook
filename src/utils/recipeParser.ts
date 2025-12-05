@@ -17,11 +17,11 @@ export class RecipeParser {
       // 提取标题
       const titleMatch = content.match(/^#\s+(.+)$/m)
       if (titleMatch) {
-        name = titleMatch[1].trim()
+        name = this.sanitizeTitle(titleMatch[1].trim())
       } else {
         // 从文件名提取标题
         const fileNameOnly = filePathOrName.split('/').pop() || filePathOrName
-        name = fileNameOnly.replace(/\.md$/, '').replace(/[-_]/g, ' ')
+        name = this.sanitizeTitle(fileNameOnly.replace(/\.md$/, '').replace(/[-_]/g, ' '))
       }
 
       // 提取描述
@@ -59,7 +59,7 @@ export class RecipeParser {
       // 根据路径或文件名判断分类
       const lowerPath = filePathOrName.toLowerCase()
       if (lowerPath.includes('/soup/')) category = 'soup'
-      else if (lowerPath.includes('/vegetarian/')) category = 'vegetarian'
+      else if (lowerPath.includes('/vegetarian/') || lowerPath.includes('/vegetable_dish/')) category = 'vegetarian'
       else if (lowerPath.includes('/meat_dish/')) category = 'meat_dish'
       else if (lowerPath.includes('/aquatic/')) category = 'aquatic'
       else if (lowerPath.includes('/drink/')) category = 'drink'
@@ -67,7 +67,7 @@ export class RecipeParser {
       else {
         const fileNameOnly = filePathOrName
         if (fileNameOnly.includes('汤')) category = 'soup'
-        else if (fileNameOnly.includes('素')) category = 'vegetarian'
+        else if (fileNameOnly.includes('素') || fileNameOnly.includes('素菜') || fileNameOnly.includes('蔬菜')) category = 'vegetarian'
         else if (fileNameOnly.includes('海鲜') || fileNameOnly.includes('鱼')) category = 'aquatic'
         else if (fileNameOnly.includes('饮料') || fileNameOnly.includes('饮品')) category = 'drink'
         else if (fileNameOnly.includes('甜品') || fileNameOnly.includes('蛋糕')) category = 'dessert'
@@ -223,6 +223,19 @@ export class RecipeParser {
   // 生成唯一ID
   private generateId(name: string): string {
     return name.replace(/\s+/g, '-').toLowerCase()
+  }
+
+  // 规范化标题，去掉“的做法”等后缀
+  private sanitizeTitle(raw: string): string {
+    let n = raw
+    // 去掉“的做法”“做法”及其后续括号/说明
+    n = n.replace(/\s*的?做法.*$/i, '')
+    // 常见“制作方法/制作步骤”等表述
+    n = n.replace(/\s*制作方法.*$/i, '')
+    n = n.replace(/\s*制作步骤.*$/i, '')
+    // 去掉多余的标点或结尾空白
+    n = n.replace(/[\s\-–—]+$/g, '')
+    return n.trim()
   }
 
   // 将“食材名称列表”与“计算分量”进行合并
