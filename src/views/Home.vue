@@ -315,12 +315,12 @@ const sampleTitles = (count: number): string[] => {
 const createOverlayCards = () => {
   const titles = sampleTitles(24)
   const cx = window.innerWidth * 0.5
-  const cy = window.innerHeight * 0.48
+  const cy = window.innerHeight * 0.5
   const ghosts: Ghost[] = []
   for (let i = 0; i < titles.length; i++) {
     const angle = Math.random() * Math.PI * 2
-    const speed = 600 + Math.random() * 600 // px/s
-    const vrot = (Math.random() * 240 - 120) // deg/s
+    const speed = 1200 + Math.random() * 1200 // px/s (double)
+    const vrot = (Math.random() * 480 - 240) // deg/s (double)
     ghosts.push({
       id: i,
       title: titles[i],
@@ -346,10 +346,10 @@ const createOverlayCards = () => {
 }
 
 const startGhostSequence = () => new Promise<void>((resolve) => {
-  const cx = window.innerWidth * 0.5
-  const cy = window.innerHeight * 0.48
+  const cx = window.innerWidth * 0.35
+  const cy = window.innerHeight * 0.5
   const R = Math.min(window.innerWidth, window.innerHeight) * 0.42
-  const ORBIT_MS = 5000
+  const ORBIT_MS = 1500
   const start = performance.now()
   let orbitStart = 0
   let last = start
@@ -380,11 +380,11 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
         const dist = Math.hypot(dx, dy)
         const nrot = g.rot + g.vrot * dt
         const s = Math.min(1.05, g.scale + dt * 0.12)
-        const op = Math.min(1, g.opacity + dt * 3)
+        const op = Math.min(1, g.opacity + dt * 5)
         if (dist >= R) {
           // snap to orbit
           const theta = Math.atan2(dy, dx)
-          const omega = (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 0.8)
+          const omega = (Math.random() < 0.5 ? -1 : 1) * (2.6 + Math.random() * 2.6) // double angular speed
           allExploded = false // still transitioning
           return { ...g, x: cx + R * Math.cos(theta), y: cy + R * Math.sin(theta), rot: nrot, scale: s, opacity: op, phase: 'orbit', theta, radius: R, omega }
         } else {
@@ -398,8 +398,9 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
         const nx = cx + g.radius * Math.cos(theta)
         const ny = cy + g.radius * Math.sin(theta)
         const nrot = g.rot + g.vrot * dt
+        const op = Math.min(1, Math.max(g.opacity, 0.95))
         allOrbiting = false
-        return { ...g, x: nx, y: ny, rot: nrot, theta }
+        return { ...g, x: nx, y: ny, rot: nrot, theta, opacity: op }
       }
 
       if (g.phase === 'fly') {
@@ -412,11 +413,12 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
         }
         const vx = (dx / dist) * g.speed
         const vy = (dy / dist) * g.speed
-        return { ...g, x: g.x + vx * dt, y: g.y + vy * dt, rot: g.rot + g.vrot * dt, scale: Math.max(0.9, g.scale - dt * 0.05) }
+        const op = Math.min(1, Math.max(g.opacity, 0.98))
+        return { ...g, x: g.x + vx * dt, y: g.y + vy * dt, rot: g.rot + g.vrot * dt, scale: Math.max(0.9, g.scale - dt * 0.05), opacity: op }
       }
 
       if (g.phase === 'fade') {
-        const op = Math.max(0, g.opacity - dt * 1)
+        const op = Math.max(0, g.opacity - dt * 1.4)
         return { ...g, opacity: op }
       }
 
