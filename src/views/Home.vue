@@ -257,7 +257,15 @@ const totalTime = computed(() => {
 
 const recommendations = ref<string[]>([])
 const isAnimating = ref(false)
-type Ghost = { id:number; title:string; x:number; y:number; vx:number; vy:number; rot:number; vrot:number; scale:number; opacity:number }
+type Ghost = {
+  id:number; title:string;
+  x:number; y:number; vx:number; vy:number;
+  rot:number; vrot:number; scale:number; opacity:number;
+  phase:'explode'|'orbit'|'fly'|'fade';
+  theta:number; radius:number; omega:number;
+  targetX:number; targetY:number; speed:number;
+  fadeStart:number
+}
 const overlayCards = ref<Ghost[]>([])
 let ghostRafId: number | null = null
 const menuGridRef = ref<HTMLElement | null>(null)
@@ -346,10 +354,10 @@ const createOverlayCards = () => {
 }
 
 const startGhostSequence = () => new Promise<void>((resolve) => {
-  const cx = window.innerWidth * 0.35
+  const cx = window.innerWidth * 0.5
   const cy = window.innerHeight * 0.5
   const R = Math.min(window.innerWidth, window.innerHeight) * 0.42
-  const ORBIT_MS = 1500
+  const ORBIT_MS = 5000
   const start = performance.now()
   let orbitStart = 0
   let last = start
@@ -368,9 +376,7 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
     const dt = (now - last) / 1000
     last = now
 
-    let allExploded = true
-    let allOrbiting = true
-    overlayCards.value = overlayCards.value.map((g, i) => {
+    overlayCards.value = overlayCards.value.map((g, _i) => {
       if (g.phase === 'explode') {
         // move outwards
         const nx = g.x + g.vx * dt
@@ -385,10 +391,8 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
           // snap to orbit
           const theta = Math.atan2(dy, dx)
           const omega = (Math.random() < 0.5 ? -1 : 1) * (2.6 + Math.random() * 2.6) // double angular speed
-          allExploded = false // still transitioning
           return { ...g, x: cx + R * Math.cos(theta), y: cy + R * Math.sin(theta), rot: nrot, scale: s, opacity: op, phase: 'orbit', theta, radius: R, omega }
         } else {
-          allExploded = false
           return { ...g, x: nx, y: ny, rot: nrot, scale: s, opacity: op }
         }
       }
@@ -399,7 +403,6 @@ const startGhostSequence = () => new Promise<void>((resolve) => {
         const ny = cy + g.radius * Math.sin(theta)
         const nrot = g.rot + g.vrot * dt
         const op = Math.min(1, Math.max(g.opacity, 0.95))
-        allOrbiting = false
         return { ...g, x: nx, y: ny, rot: nrot, theta, opacity: op }
       }
 
