@@ -124,7 +124,7 @@
           </div>
         </div>
         
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="grid gap-4 md:grid-cols-2" ref="menuGridRef">
           <div 
             v-for="(recipe, idx) in displayMenu" 
             :key="recipe.id"
@@ -260,6 +260,7 @@ const isAnimating = ref(false)
 type Ghost = { id:number; title:string; x:number; y:number; vx:number; vy:number; rot:number; vrot:number; scale:number; opacity:number }
 const overlayCards = ref<Ghost[]>([])
 let ghostRafId: number | null = null
+const menuGridRef = ref<HTMLElement | null>(null)
 const visibleCount = ref(0)
 const displayMenu = computed(() => currentMenu.value.slice(0, visibleCount.value))
 
@@ -330,35 +331,133 @@ const createOverlayCards = () => {
       rot: 0,
       vrot,
       scale: 0.95,
-      opacity: 0
+      opacity: 0,
+      phase: 'explode',
+      theta: angle,
+      radius: 0,
+      omega: 0,
+      targetX: 0,
+      targetY: 0,
+      speed: 900,
+      fadeStart: 0
     })
   }
   overlayCards.value = ghosts
 }
 
-const startGhostAnimation = (durationMs = 1600) => new Promise<void>((resolve) => {
+const startGhostSequence = () => new Promise<void>((resolve) => {
+  const cx = window.innerWidth * 0.5
+  const cy = window.innerHeight * 0.48
+  const R = Math.min(window.innerWidth, window.innerHeight) * 0.42
+  const ORBIT_MS = 5000
   const start = performance.now()
+  let orbitStart = 0
   let last = start
+
+  // pick which ghosts will fly into menu list (equal to cards we will show)
+  const total = currentMenu.value.length
+  const flyIds = new Set<number>()
+  const idxs = overlayCards.value.map((_, i) => i)
+  for (let i = idxs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[idxs[i], idxs[j]] = [idxs[j], idxs[i]]
+  }
+  idxs.slice(0, Math.min(total, idxs.length)).forEach(i => flyIds.add(i))
+
   const step = (now: number) => {
-    const elapsed = now - start
     const dt = (now - last) / 1000
     last = now
-    // update ghosts
-    overlayCards.value = overlayCards.value.map(g => {
-      const nx = g.x + g.vx * dt
-      const ny = g.y + g.vy * dt
-      const nrot = g.rot + g.vrot * dt
-      const t = Math.min(1, elapsed / 300)
-      const s = 0.95 + 0.1 * t
-      const op = Math.min(1, elapsed / 300)
-      return { ...g, x: nx, y: ny, rot: nrot, scale: s, opacity: op }
+
+    let allExploded = true
+    let allOrbiting = true
+    overlayCards.value = overlayCards.value.map((g, i) => {
+      if (g.phase === 'explode') {
+        // move outwards
+        const nx = g.x + g.vx * dt
+        const ny = g.y + g.vy * dt
+        const dx = nx - cx
+        const dy = ny - cy
+        const dist = Math.hypot(dx, dy)
+        const nrot = g.rot + g.vrot * dt
+        const s = Math.min(1.05, g.scale + dt * 0.12)
+        const op = Math.min(1, g.opacity + dt * 3)
+        if (dist >= R) {
+          // snap to orbit
+          const theta = Math.atan2(dy, dx)
+          const omega = (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 0.8)
+          allExploded = false // still transitioning
+          return { ...g, x: cx + R * Math.cos(theta), y: cy + R * Math.sin(theta), rot: nrot, scale: s, opacity: op, phase: 'orbit', theta, radius: R, omega }
+        } else {
+          allExploded = false
+          return { ...g, x: nx, y: ny, rot: nrot, scale: s, opacity: op }
+        }
+      }
+
+      if (g.phase === 'orbit') {
+        const theta = g.theta + g.omega * dt
+        const nx = cx + g.radius * Math.cos(theta)
+        const ny = cy + g.radius * Math.sin(theta)
+        const nrot = g.rot + g.vrot * dt
+        allOrbiting = false
+        return { ...g, x: nx, y: ny, rot: nrot, theta }
+      }
+
+      if (g.phase === 'fly') {
+        const dx = g.targetX - g.x
+        const dy = g.targetY - g.y
+        const dist = Math.hypot(dx, dy)
+        if (dist < 18) {
+          // arrived: start fade
+          return { ...g, phase: 'fade', fadeStart: now }
+        }
+        const vx = (dx / dist) * g.speed
+        const vy = (dy / dist) * g.speed
+        return { ...g, x: g.x + vx * dt, y: g.y + vy * dt, rot: g.rot + g.vrot * dt, scale: Math.max(0.9, g.scale - dt * 0.05) }
+      }
+
+      if (g.phase === 'fade') {
+        const op = Math.max(0, g.opacity - dt * 1)
+        return { ...g, opacity: op }
+      }
+
+      return g
     })
-    if (elapsed < durationMs) {
-      ghostRafId = requestAnimationFrame(step)
-    } else {
-      ghostRafId = null
-      resolve()
+
+    // set orbitStart when first orbit happens
+    if (!orbitStart && overlayCards.value.some(g => g.phase === 'orbit')) orbitStart = now
+
+    // after orbit time, switch phases to fly/fade
+    if (orbitStart && (now - orbitStart) > ORBIT_MS) {
+      const rect = menuGridRef.value?.getBoundingClientRect()
+      const tx = rect ? (rect.left + rect.width * 0.5) : cx
+      const ty = rect ? (rect.top + rect.height * 0.3) : cy
+      overlayCards.value = overlayCards.value.map((g, i) => {
+        if (g.phase === 'orbit') {
+          const phase = flyIds.has(i) ? 'fly' : 'fade'
+          const jitterX = (Math.random() * 60 - 30)
+          const jitterY = (Math.random() * 60 - 30)
+          return { ...g, phase, targetX: tx + jitterX, targetY: ty + jitterY }
+        }
+        return g
+      })
+
+      // reveal real cards in sync with fly arrivals
+      const totalCards = currentMenu.value.length
+      let revealed = 0
+      const revealTimer = setInterval(() => {
+        visibleCount.value = Math.min(totalCards, visibleCount.value + 1)
+        revealed++
+        if (revealed >= totalCards) clearInterval(revealTimer)
+      }, 200)
+      orbitStart = 0 // prevent re-trigger
     }
+
+    const allDone = overlayCards.value.every(g => g.phase === 'fade' && g.opacity <= 0)
+    if (allDone) {
+      resolve()
+      return
+    }
+    ghostRafId = requestAnimationFrame(step)
   }
   ghostRafId = requestAnimationFrame(step)
 })
@@ -369,7 +468,7 @@ const onGenerateWithAnimation = async () => {
   visibleCount.value = 0
   createOverlayCards()
   await generateMenu()
-  await startGhostAnimation(1800)
+  await startGhostSequence()
   const total = currentMenu.value.length
   let i = 0
   const timer = setInterval(() => {
